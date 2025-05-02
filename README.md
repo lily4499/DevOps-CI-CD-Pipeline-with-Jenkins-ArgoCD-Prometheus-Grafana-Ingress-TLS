@@ -41,6 +41,235 @@ Automate the end-to-end deployment of a containerized application from GitHub to
 
 ---
 
+## file-setup.py
+
+```python
+import os
+
+# Define the base directory
+base_dir = "/home/lilia/VIDEOS"
+
+# Define the file structure and content
+file_structure = {
+    "app": {
+        "app.js": """const express = require('express');
+const app = express();
+const PORT = 3000;
+app.get('/', (req, res) => res.send('Hello from DevOps Pipeline!'));
+app.listen(PORT, () => console.log(`App running on port ${PORT}`));
+""",
+        "package.json": """{
+  "name": "devops-app",
+  "version": "1.0.0",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
+""",
+        "Dockerfile": """FROM node:18
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+EXPOSE 3000
+CMD ["node", "app.js"]
+""",
+        "Jenkinsfile": """pipeline {
+  agent any
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+    stage('Build') {
+      steps {
+        sh 'docker build -t laly9999/app:${BUILD_NUMBER} .'
+      }
+    }
+    stage('Push') {
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+          sh 'echo $PASS | docker login -u $USER --password-stdin'
+          sh 'docker push laly9999/app:${BUILD_NUMBER}'
+        }
+      }
+    }
+    stage('Trigger CD') {
+      steps {
+        build job: 'update-k8s-manifests', parameters: [
+          string(name: 'IMAGE_TAG', value: "${BUILD_NUMBER}")
+        ]
+      }
+    }
+  }
+}
+"""
+    },
+    "manifests": {
+        "deployment.yaml": """apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: devops-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: devops-app
+  template:
+    metadata:
+      labels:
+        app: devops-app
+    spec:
+      containers:
+        - name: devops-app
+          image: laly9999/app:latest
+          ports:
+            - containerPort: 3000
+""",
+        "service.yaml": """apiVersion: v1
+kind: Service
+metadata:
+  name: devops-service
+spec:
+  selector:
+    app: devops-app
+  ports:
+    - protocol: TCP
+      port: 3000
+      targetPort: 3000
+  type: ClusterIP
+""",
+        "ingress.yaml": """apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-prod
+  annotations:
+    cert-manager.io/issuer: letsencrypt-nginx
+spec:
+  tls:
+    - hosts:
+        - app.lilianedevops.online
+      secretName: letsencrypt-nginx
+  rules:
+    - host: app.lilianedevops.online
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: devops-service
+                port:
+                  number: 3000
+  ingressClassName: nginx
+""",
+        "Jenkinsfile": """pipeline {
+  agent any
+  parameters {
+    string(name: 'IMAGE_TAG', defaultValue: 'latest')
+  }
+  stages {
+    stage('Checkout') {
+      steps {
+        git url: 'https://github.com/your-user/devops-k8s-manifests.git', branch: 'main', credentialsId: 'github-creds'
+      }
+    }
+    stage('Update Image Tag') {
+      steps {
+        sh '''
+        sed -i 's|image: laly9999/app:.*|image: laly9999/app:${IMAGE_TAG}|' deployment.yaml
+        git config user.email "ci@jenkins.com"
+        git config user.name "Jenkins"
+        git commit -am "Update image tag to ${IMAGE_TAG}"
+        git push
+        '''
+      }
+    }
+  }
+}
+"""
+    },
+    "ingress-configs": {
+        "issuer.yaml": """apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: letsencrypt-nginx
+spec:
+  acme:
+    email: konissil@yahoo.com
+    server: https://acme-v02.api.letsencrypt.org/directory
+    privateKeySecretRef:
+      name: letsencrypt-nginx-private-key
+    solvers:
+      - http01:
+          ingress:
+            class: nginx
+""",
+        "ingress.yaml": """apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-prod
+  annotations:
+    cert-manager.io/issuer: letsencrypt-nginx
+spec:
+  tls:
+    - hosts:
+        - app.lilianedevops.online
+      secretName: letsencrypt-nginx
+  rules:
+    - host: app.lilianedevops.online
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: devops-service
+                port:
+                  number: 3000
+  ingressClassName: nginx
+"""
+    },
+    "monitoring-configs": {
+        "prometheus-values.yaml": """alertmanager:
+  enabled: false
+server:
+  global:
+    scrape_interval: 15s
+  service:
+    type: ClusterIP
+""",
+        "grafana-values.yaml": """adminPassword: admin
+service:
+  type: ClusterIP
+persistence:
+  enabled: true
+  size: 1Gi
+"""
+    }
+}
+
+# Create directories and write files
+for folder, files in file_structure.items():
+    dir_path = os.path.join(base_dir, folder)
+    os.makedirs(dir_path, exist_ok=True)
+    for filename, content in files.items():
+        with open(os.path.join(dir_path, filename), "w") as f:
+            f.write(content)
+
+"✅ Project directories and files created successfully."
+
+
+
+```
+
+---
+
 ## 🏁 Phase 1: Build and test the Docker Image Locally
 
 ```bash
@@ -385,7 +614,8 @@ These metrics help you monitor the physical or virtual machines (nodes) running 
   - `rate(node_cpu_seconds_total{mode!="idle"}[5m])`
   - `node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes`
   - `rate(node_disk_read_bytes_total[5m])`
-  - `node_load1`
+  - `rate(node_disk_written_bytes_total[5m])`
+  - `node_load1` or `node_load15`
 
 📥 **Optional Import:**  
 Use Grafana Dashboard ID `1860` (Node Exporter Full)
@@ -415,6 +645,17 @@ Use Grafana Dashboard ID `315` (Kubernetes Cluster Monitoring)
 
 ---
 
+🛠 How to Do It  
+Log into Grafana → http://localhost:3000  
+Create a new Dashboard  
+Add Panels:  
+ - Query using the appropriate Prometheus expressions above  
+ - Set visualization type (e.g., time series, gauge, bar)  
+(Optional) Import the prebuilt Node Exporter Full dashboard:  
+ - Dashboard ID: 1860  
+ - Data source: Prometheus  
+
+---
 ### 📌 Summary
 
 By combining these dashboards, you can:
