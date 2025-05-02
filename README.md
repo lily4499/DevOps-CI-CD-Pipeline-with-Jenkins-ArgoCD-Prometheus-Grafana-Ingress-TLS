@@ -1,6 +1,14 @@
 
 # 🚀 DevOps CI/CD Pipeline with Jenkins, ArgoCD, Prometheus, Grafana, Ingress & TLS
 
+---
+## Scenario
+
+> At LilianeTech, we modernized our CI/CD infrastructure by implementing a fully automated deployment pipeline using Jenkins, ArgoCD, and Kubernetes on AWS EKS. Our Node.js application is built, tested, and containerized via Jenkins, with each new Docker image automatically triggering updates to our GitOps-managed Kubernetes manifests. ArgoCD detects these changes and synchronizes them to the cluster in real-time. With Prometheus and Grafana integrated, our team now monitors node health, application performance, and pod status from a centralized dashboard. We secured our public-facing services using NGINX Ingress with TLS certificates issued automatically by Cert-Manager. This streamlined pipeline reduced our deployment time from hours to minutes and improved system reliability with real-time monitoring and Git-based audit trails.
+
+---
+
+
 ## 📌 Objective
 
 Automate the end-to-end deployment of a containerized application from GitHub to AWS EKS using:
@@ -9,7 +17,7 @@ Automate the end-to-end deployment of a containerized application from GitHub to
 - ✅ ArgoCD GitOps
 - ✅ Prometheus/Grafana for Monitoring
 - ✅ Ingress with TLS via Cert-Manager
-- ✅ DNS via Namecheap + DigitalOcean
+- ✅ DNS via Namecheap + AWS EKS
 
 ---
 
